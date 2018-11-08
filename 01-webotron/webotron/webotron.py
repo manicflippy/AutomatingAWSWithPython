@@ -1,48 +1,67 @@
+#!/user/bin/python
+# -*- coding: utf-8 -*-
 
-import boto3
-import click
-from botocore.exceptions import ClientError
+"""Webotron: Deploy websites with AWS.
+
+Webotron automates the process of deploying static websites in S3
+- Configure AWS S3 list_buckets
+    - Create htem
+    - Set them up for static website hosting
+    - Deploy local files to them
+- Configure DNS with AWS Route 53
+- Configure Content Delivery Network and SSL with AWS CloudFront
+"""
+
 from pathlib import Path
 import mimetypes
+import boto3
+from botocore.exceptions import ClientError
+import click
 
-session = boto3.Session(profile_name='Boto3')
-s3 = session.resource('s3')
+
+SESSION = boto3.Session(profile_name='Boto3')
+S3 = SESSION.resource('s3')
+
 
 @click.group()
 def cli():
-    "Webotron deploys websites to AWS"
+    """Webotron deploys websites to AWS."""
     pass
+
 
 @cli.command('list-buckets')
 def list_buckets():
-    "List all s3 buckets"
-    for bucket in s3.buckets.all():
+    """List all s3 buckets."""
+    for bucket in S3.buckets.all():
         print(bucket)
+
 
 @cli.command('list-bucket-objects')
 @click.argument('bucket')
 def list_bucket_objects(bucket):
-    "Lists objects in an s3 bucket"
-    for obj in s3.Bucket(bucket).objects.all():
+    """List objects in an s3 bucket."""
+    for obj in S3.Bucket(bucket).objects.all():
         print(obj)
 
 
 @cli.command('setup-bucket')
 @click.argument('bucket')
 def setup_bucket(bucket):
-    "Create and configure s3 bucket"
+    """Create and configure s3 bucket."""
     s3_bucket = None
 
     try:
-        s3_bucket = s3.create_bucket(
-                Bucket=bucket,
-                CreateBucketConfiguration={'LocationConstraint':session.region_name}
+        s3_bucket = S3.create_bucket(
+            Bucket=bucket,
+            CreateBucketConfiguration={
+                'LocationConstraint': SESSION.region_name
+            }
         )
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
-            s3_bucket =s3.Bucket(bucket)
+    except ClientError as error:
+        if error.response['Error']['Code'] == 'BucketAlreadyOwnedByYou':
+            s3_bucket = S3.Bucket(bucket)
         else:
-            raise e
+            raise error
 
     policy = """{
       "Version":"2012-10-17",
@@ -60,8 +79,7 @@ def setup_bucket(bucket):
     pol = s3_bucket.Policy()
     pol.put(Policy=policy)
 
-    ws = s3_bucket.Website()
-    ws.put(WebsiteConfiguration={
+    s3_bucket.Website().put(WebsiteConfiguration={
         'ErrorDocument': {
             'Key': 'error.html'
         },
@@ -70,35 +88,39 @@ def setup_bucket(bucket):
         }
     })
 
-    return
 
 def upload_file(s3_bucket, path, key):
+    """Upload path to s3_bucket at key."""
     content_type = mimetypes.guess_type(key)[0] or 'text/plain'
     s3_bucket.upload_file(
         path,
         key,
         ExtraArgs={
-            'ContentType': 'text/html'
+            'ContentType': content_type
         })
-
 
 
 @cli.command('sync')
 @click.argument('pathname', type=click.Path(exists=True))
 @click.argument('bucket')
-
 def sync(pathname, bucket):
-    "Sync contents of PATHNAME to BUCKET"
-    s3_bucket = s3.Bucket(bucket)
+    """Sync contents of PATHNAME to BUCKET."""
+    s3_bucket = S3.Bucket(bucket)
     root = Path(pathname).expanduser().resolve()
+
     def handle_directory(target):
-        for p in target.iterdir():
-            if p.is_dir(): handle_directory(p)
-            if p.is_file(): upload_file(s3_bucket, str(p.as_posix()), str((p.relative_to(root).as_posix())))
-#            if p.is_file(): upload_file(s3_bucket, str(p), str(p.relative_to(root)))
-#            if p.is_file(): print(s3_bucket, str(p.as_posix()), str((p.relative_to(root).as_posix())))
+        for path in target.iterdir():
+            if path.is_dir():
+                handle_directory(path)
+            if path.is_file():
+                upload_file(
+                    s3_bucket,
+                    str(path.as_posix()),
+                    str((path.relative_to(root).as_posix()))
+                )
 
     handle_directory(root)
+
 
 if __name__ == '__main__':
     cli()
