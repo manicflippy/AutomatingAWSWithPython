@@ -13,3 +13,4 @@ webotron currently has he following Features@:
 - List objects within an s3 bucket
 - Create and setup buckets
 - Sync directory to bucket
+- Set AWS profile with --profile=<profilename>
