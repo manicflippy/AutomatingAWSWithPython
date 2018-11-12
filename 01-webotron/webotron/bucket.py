@@ -10,12 +10,14 @@ from hashlib import md5
 from functools import reduce
 import boto3
 
+
 class BucketManager:
     """Manage and s3 Bucket."""
+
     CHUNK_SIZE = 8388608
 
     def __init__(self, session):
-        """Create a BucketManager objec."""
+        """Create a BucketManager object."""
         self.session = session
         self.s3 = self.session.resource('s3')
         self.transfer_config = boto3.s3.transfer.TransferConfig(
@@ -24,6 +26,9 @@ class BucketManager:
         )
         self.manifest = {}
 
+    def get_bucket(self, bucket_name):
+        """Get bucket by name."""
+        return self.s3.Bucket(bucket_name)
 
     def get_region_name(self, bucket):
         """Get the buckets' region name."""
@@ -36,9 +41,9 @@ class BucketManager:
             bucket.name, util.get_endpoint(self.get_region_name(bucket)).host
             )
 
-    def all_buckets(self, bucket):
+    def all_buckets(self):
         """Get an iterator for all buckets."""
-        return self.s3.buckets.all(self.get_region_name(bucket)).host
+        return self.s3.buckets.all()
 
     def all_objects(self, bucket):
         """Get an iterator for all objects in bucket."""
@@ -98,10 +103,9 @@ class BucketManager:
             for obj in page.get('Contents', []):
                 self.manifest[obj['Key']] = obj['ETag']
 
-
     @staticmethod
     def hash_data(data):
-        """Generat md5 hash for data."""
+        """Generate md5 hash for data."""
         hash = md5()
         hash.update(data)
         return hash
@@ -121,7 +125,7 @@ class BucketManager:
         elif len(hashes) == 1:
             return '"{}"'.format(hashes[0].hexdigest())
         else:
-            hash = self.hash_data(reduce(lambda x, y: x + Y, (h.digest() for h in hashes)))
+            hash = self.hash_data(reduce(lambda x, y: x + y, (h.digest() for h in hashes)))
             return '"{}-{}"'.format(hash.hexdigest(), len(hashes))
 
     def upload_file(self, bucket, path, key):
@@ -158,5 +162,6 @@ class BucketManager:
                         str(path.as_posix()),
                         str((path.relative_to(root).as_posix()))
                     )
+
 
         handle_directory(root)
